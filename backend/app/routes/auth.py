@@ -18,9 +18,9 @@ def register_student():
     if missing:
         return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
 
-    # Email format validation
+    # Email format validation (disable DNS check for development)
     try:
-        validate_email(data["email"])
+        validate_email(data["email"], check_deliverability=False)
     except EmailNotValidError:
         return jsonify({"error": "Invalid email address"}), 400
 
