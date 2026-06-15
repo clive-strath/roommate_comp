@@ -5,16 +5,31 @@ import api from "../../api/axios";
 import Navbar from "../../components/Navbar";
 
 export default function AdminDashboard() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const navigate = useNavigate();
 
-  const [data,    setData]    = useState({ students:[], total:0, submitted:0, not_submitted:0 });
+  const [data, setData] = useState({ students: [], total: 0, submitted: 0, not_submitted: 0 });
   const [loading, setLoading] = useState(true);
-  const [search,  setSearch]  = useState("");
+  const [search, setSearch] = useState("");
   const [filterGender, setFilterGender] = useState("");
   const [filterYear, setFilterYear] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [actionMessage, setActionMessage] = useState("");
+
+  // Modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  // Form state
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    role: "admin", // default to admin
+    hostelBlock: "",
+    password: "",
+    confirmPassword: "",
+  });
+  const [formErrors, setFormErrors] = useState({});
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const fetchStudents = async () => {
     try {
@@ -44,6 +59,121 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleModalOpen = () => {
+    // Reset form
+    setForm({
+      name: "",
+      email: "",
+      role: "admin",
+      hostelBlock: "",
+      password: "",
+      confirmPassword: "",
+    });
+    setFormErrors({});
+    setSubmitError("");
+    setModalOpen(true);
+  };
+
+  const handleModalClose = () => {
+    setModalOpen(false);
+  };
+
+  const handleFieldChange = (e) => {
+    const { name, value } = e.target;
+    setForm(prev => ({
+      ...prev,
+      [name]: value,
+    }));
+    // Clear error for this field when user types
+    if (formErrors[name]) {
+      const newErrors = { ...formErrors };
+      delete newErrors[name];
+      setFormErrors(newErrors);
+    }
+    // Clear submit error on any change
+    if (submitError) setSubmitError("");
+  };
+
+  const handleRoleChange = (e) => {
+    const value = e.target.value;
+    setForm(prev => ({
+      ...prev,
+      role: value,
+      hostelBlock: value === "resident_advisor" ? "" : form.hostelBlock, // keep hostelBlock if switching from RA to admin? Actually we want to clear when switching to admin.
+    }));
+    // Actually, when switching to admin, we should clear hostelBlock because it's not needed.
+    if (value === "admin") {
+      setForm(prev => ({
+        ...prev,
+        hostelBlock: "",
+      }));
+    }
+    // Clear hostelBlock error if any
+    if (formErrors.hostelBlock) {
+      const newErrors = { ...formErrors };
+      delete newErrors.hostelBlock;
+      setFormErrors(newErrors);
+    }
+  };
+
+  const validateForm = () => {
+    const errors = {};
+    const { name, email, role, hostelBlock, password, confirmPassword } = form;
+
+    if (!name.trim()) errors.name = "Full name is required";
+    if (!email.trim()) errors.email = "Email address is required";
+    else if (!/\S+@\S+\.\S+/.test(email)) errors.email = "Email address is invalid";
+    if (!role) errors.role = "Role is required";
+    if (role === "resident_advisor" && !hostelBlock.trim()) errors.hostelBlock = "Hostel block is required for Resident Advisors";
+    if (!password) errors.password = "Password is required";
+    else if (password.length < 8) errors.password = "Password must be at least 8 characters";
+    if (!confirmPassword) errors.confirmPassword = "Please confirm your password";
+    else if (password !== confirmPassword) errors.confirmPassword = "Passwords do not match";
+
+    return errors;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const errors = validateForm();
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
+    setSubmitLoading(true);
+    setSubmitError("");
+
+    try {
+      const res = await api.post("/admin/users", {
+        name: form.name.trim(),
+        email: form.email.trim().toLowerCase(),
+        password: form.password,
+        role: form.role,
+        hostelBlock: form.role === "resident_advisor" ? form.hostelBlock.trim() : null,
+      });
+      // Success
+      setActionMessage(`${form.role.charAt(0).toUpperCase() + form.role.slice(1)} account created successfully`);
+      setModalOpen(false);
+      fetchStudents(); // Refresh student table as per requirement
+      setTimeout(() => setActionMessage(""), 3000);
+    } catch (err) {
+      let message = "An error occurred";
+      if (err.response) {
+        if (err.response.status === 409) {
+          message = "Email already registered";
+        } else if (err.response.status === 400) {
+          message = err.response.data.error || "Invalid input";
+        } else {
+          message = err.response.data.error || "Failed to create account";
+        }
+      }
+      setSubmitError(message);
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
+
   const filtered = data.students.filter(s => {
     const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase()) ||
                           s.student_number.toLowerCase().includes(search.toLowerCase());
@@ -57,11 +187,22 @@ export default function AdminDashboard() {
     <div className="page-container">
       <Navbar />
       <div className="main-content">
-        <div style={{ marginBottom: "28px" }}>
-          <h1 style={{ fontSize: "28px", marginBottom: "4px" }}>Admin Roommate Management</h1>
-          <p style={{ color: "var(--text-muted)" }}>
-            Review compatibility directory status, check student profile compliance, and prepare matching cycles.
-          </p>
+        <div style={{ marginBottom: "28px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h1 style={{ fontSize: "28px", marginBottom: "4px" }}>Admin Roommate Management</h1>
+            <p style={{ color: "var(--text-muted)" }}>
+              Review compatibility directory status, check student profile compliance, and prepare matching cycles.
+            </p>
+          </div>
+          {role === "admin" && (
+            <button
+              onClick={handleModalOpen}
+              className="btn btn-primary"
+              style={{ padding: "10px 20px", fontSize: "14px", borderRadius: "4px" }}
+            >
+              Create Staff Account
+            </button>
+          )}
         </div>
 
         {actionMessage && (
@@ -226,6 +367,153 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Modal */}
+      {modalOpen && (
+        <div className="modal-backdrop" onClick={handleModalClose}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Create Staff Account</h3>
+              <button className="modal-close" onClick={handleModalClose}>
+                ×
+              </button>
+            </div>
+            <form onSubmit={handleSubmit} style={{ marginTop: "20px" }}>
+              <div className="form-group">
+                <label>Full Name</label>
+                <input
+                  type="text"
+                  name="name"
+                  value={form.name}
+                  onChange={handleFieldChange}
+                  className="form-input"
+                  style={{ width: "100%", padding: "10px", marginTop: "5px", borderRadius: "4px", border: formErrors.name ? "1px solid var(--color-error)" : "1px solid var(--border-color)" }}
+                />
+                {formErrors.name && (
+                  <span className="error-message" style={{ display: "block", marginTop: "5px", color: "var(--color-error)", fontSize: "14px" }}>
+                    {formErrors.name}
+                  </span>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label>Email Address</label>
+                <input
+                  type="email"
+                  name="email"
+                  value={form.email}
+                  onChange={handleFieldChange}
+                  className="form-input"
+                  style={{ width: "100%", padding: "10px", marginTop: "5px", borderRadius: "4px", border: formErrors.email ? "1px solid var(--color-error)" : "1px solid var(--border-color)" }}
+                />
+                {formErrors.email && (
+                  <span className="error-message" style={{ display: "block", marginTop: "5px", color: "var(--color-error)", fontSize: "14px" }}>
+                    {formErrors.email}
+                  </span>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label>Role</label>
+                <select
+                  name="role"
+                  value={form.role}
+                  onChange={handleRoleChange}
+                  className="form-select"
+                  style={{ width: "100%", padding: "10px", marginTop: "5px", borderRadius: "4px", border: formErrors.role ? "1px solid var(--color-error)" : "1px solid var(--border-color)" }}
+                >
+                  <option value="">Select Role</option>
+                  <option value="admin">Administrator</option>
+                  <option value="resident_advisor">Resident Advisor</option>
+                </select>
+                {formErrors.role && (
+                  <span className="error-message" style={{ display: "block", marginTop: "5px", color: "var(--color-error)", fontSize: "14px" }}>
+                    {formErrors.role}
+                  </span>
+                )}
+              </div>
+
+              {form.role === "resident_advisor" && (
+                <div className="form-group">
+                  <label>Hostel Block</label>
+                  <input
+                    type="text"
+                    name="hostelBlock"
+                    value={form.hostelBlock}
+                    onChange={handleFieldChange}
+                    className="form-input"
+                    style={{ width: "100%", padding: "10px", marginTop: "5px", borderRadius: "4px", border: formErrors.hostelBlock ? "1px solid var(--color-error)" : "1px solid var(--border-color)" }}
+                  />
+                  {formErrors.hostelBlock && (
+                    <span className="error-message" style={{ display: "block", marginTop: "5px", color: "var(--color-error)", fontSize: "14px" }}>
+                      {formErrors.hostelBlock}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div className="form-group">
+                <label>Password</label>
+                <input
+                  type="password"
+                  name="password"
+                  value={form.password}
+                  onChange={handleFieldChange}
+                  className="form-input"
+                  style={{ width: "100%", padding: "10px", marginTop: "5px", borderRadius: "4px", border: formErrors.password ? "1px solid var(--color-error)" : "1px solid var(--border-color)" }}
+                />
+                {formErrors.password && (
+                  <span className="error-message" style={{ display: "block", marginTop: "5px", color: "var(--color-error)", fontSize: "14px" }}>
+                    {formErrors.password}
+                  </span>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label>Confirm Password</label>
+                <input
+                  type="password"
+                  name="confirmPassword"
+                  value={form.confirmPassword}
+                  onChange={handleFieldChange}
+                  className="form-input"
+                  style={{ width: "100%", padding: "10px", marginTop: "5px", borderRadius: "4px", border: formErrors.confirmPassword ? "1px solid var(--color-error)" : "1px solid var(--border-color)" }}
+                />
+                {formErrors.confirmPassword && (
+                  <span className="error-message" style={{ display: "block", marginTop: "5px", color: "var(--color-error)", fontSize: "14px" }}>
+                    {formErrors.confirmPassword}
+                  </span>
+                )}
+              </div>
+
+              {submitError && (
+                <div className="alert alert-error" style={{ marginTop: "15px", padding: "10px", background: "var(--bg-error)", color: "var(--color-error)", borderRadius: "4px" }}>
+                  {submitError}
+                </div>
+              )}
+
+              <div className="form-group" style={{ marginTop: "20px", textAlign: "right" }}>
+                <button
+                  type="submit"
+                  disabled={submitLoading}
+                  className="btn btn-primary"
+                  style={{ padding: "10px 20px", fontSize: "14px", borderRadius: "4px", opacity: submitLoading ? 0.7 : 1 }}
+                >
+                  {submitLoading ? "Creating..." : "Create Account"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleModalClose}
+                  className="btn btn-secondary"
+                  style={{ padding: "10px 20px", fontSize: "14px", marginLeft: "10px", borderRadius: "4px" }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
