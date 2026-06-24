@@ -635,6 +635,16 @@ h1, h2, h3, h4, h5, h6 {
   background-color: #f8fafc;
 }
 
+.allocation-row-flagged {
+  background-color: #fff7ed;
+}
+
+.allocation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 /* Stats panel */
 .stats-panel {
   display: grid;

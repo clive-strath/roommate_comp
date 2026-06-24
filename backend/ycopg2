@@ -1,0 +1,46 @@
+                                                 Table "public.room_assignments"
+       Column        |           Type           | Collation | Nullable |                         Default                         
+---------------------+--------------------------+-----------+----------+---------------------------------------------------------
+ assignment_id       | integer                  |           | not null | nextval('room_assignments_assignment_id_seq'::regclass)
+ student_id_1        | integer                  |           | not null | 
+ student_id_2        | integer                  |           |          | 
+ room_id             | integer                  |           | not null | 
+ semester            | character varying(20)    |           | not null | 
+ compatibility_score | integer                  |           |          | 
+ score_breakdown     | jsonb                    |           |          | 
+ assignment_type     | character varying(10)    |           | not null | 'algorithm'::character varying
+ override_reason     | text                     |           |          | 
+ overridden_by       | integer                  |           |          | 
+ overridden_at       | timestamp with time zone |           |          | 
+ status              | character varying(15)    |           | not null | 'active'::character varying
+ assigned_by         | integer                  |           | not null | 
+ created_at          | timestamp with time zone |           | not null | now()
+ updated_at          | timestamp with time zone |           | not null | now()
+ is_flagged          | boolean                  |           | not null | false
+Indexes:
+    "room_assignments_pkey" PRIMARY KEY, btree (assignment_id)
+    "idx_assignments_room" btree (room_id)
+    "idx_assignments_score" btree (compatibility_score)
+    "idx_assignments_semester" btree (semester)
+    "idx_assignments_status" btree (status)
+    "idx_assignments_student1" btree (student_id_1)
+    "idx_assignments_student2" btree (student_id_2)
+    "unique_pairing_per_semester" UNIQUE CONSTRAINT, btree (student_id_1, student_id_2, semester)
+    "unique_room_per_semester" UNIQUE CONSTRAINT, btree (room_id, semester)
+Check constraints:
+    "no_self_assignment" CHECK (student_id_2 IS NULL OR student_id_1 <> student_id_2)
+    "room_assignments_assignment_type_check" CHECK (assignment_type::text = ANY (ARRAY['algorithm'::character varying, 'manual'::character varying]::text[]))
+    "room_assignments_compatibility_score_check" CHECK (compatibility_score IS NULL OR compatibility_score >= 0 AND compatibility_score <= 100)
+    "room_assignments_status_check" CHECK (status::text = ANY (ARRAY['awaiting_roommate'::character varying, 'active'::character varying, 'completed'::character varying, 'cancelled'::character varying, 'archived'::character varying]::text[]))
+Foreign-key constraints:
+    "room_assignments_assigned_by_fkey" FOREIGN KEY (assigned_by) REFERENCES admin_users(admin_id) ON DELETE RESTRICT
+    "room_assignments_overridden_by_fkey" FOREIGN KEY (overridden_by) REFERENCES admin_users(admin_id) ON DELETE SET NULL
+    "room_assignments_room_id_fkey" FOREIGN KEY (room_id) REFERENCES rooms(room_id) ON DELETE RESTRICT
+    "room_assignments_student_id_1_fkey" FOREIGN KEY (student_id_1) REFERENCES students(student_id) ON DELETE CASCADE
+    "room_assignments_student_id_2_fkey" FOREIGN KEY (student_id_2) REFERENCES students(student_id) ON DELETE CASCADE
+Referenced by:
+    TABLE "conflict_logs" CONSTRAINT "conflict_logs_assignment_id_fkey" FOREIGN KEY (assignment_id) REFERENCES room_assignments(assignment_id) ON DELETE RESTRICT
+Triggers:
+    set_updated_at_room_assignments BEFORE UPDATE ON room_assignments FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at()
+    sync_room_status_on_assignment AFTER INSERT OR UPDATE ON room_assignments FOR EACH ROW EXECUTE FUNCTION trigger_sync_room_status()
+
