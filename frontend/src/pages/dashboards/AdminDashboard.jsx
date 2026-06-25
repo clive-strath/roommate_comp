@@ -1263,6 +1263,21 @@ export default function AdminDashboard() {
               Resolved conflicts: <strong style={{ color: "var(--text-main)" }}>{resolvedCount}</strong>
             </p>
           </div>
+
+          <div className="card" style={{ marginBottom: 0 }}>
+            <h3 className="card-title">
+              <span>ℹ️</span> Allocation Workflow
+            </h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "13.5px", lineHeight: "1.6" }}>
+              1. Generate suggestions from compatibility scoring and maximum weight matching.
+              <br />
+              2. Review low-compatibility rows and override pairings where required.
+              <br />
+              3. Approve individual rows or bulk approve all suggestions.
+              <br />
+              4. Approved pairs are assigned to empty rooms. Singles are assigned as awaiting roommates.
+            </p>
+          </div>
         </div>
       </div>
 

@@ -166,7 +166,6 @@ class RoomAssignment(db.Model):
             "room":                self.room.to_dict() if self.room else None,
         }
 
-
 class ConflictLog(db.Model):
     __tablename__ = "conflict_logs"
 
@@ -226,4 +225,3 @@ class ConflictLog(db.Model):
             "room_number": room.room_number if room else None,
             "hostel_block": room.hostel_block if room else None,
         }
-
