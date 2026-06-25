@@ -17,10 +17,12 @@ def create_app():
     from .routes.students    import students_bp
     from .routes.preferences import preferences_bp
     from .routes.admin       import admin_bp
+    from .routes.conflicts   import conflicts_bp
 
     app.register_blueprint(auth_bp,        url_prefix="/api/auth")
     app.register_blueprint(students_bp,    url_prefix="/api/students")
     app.register_blueprint(preferences_bp, url_prefix="/api/preferences")
     app.register_blueprint(admin_bp,       url_prefix="/api/admin")
+    app.register_blueprint(conflicts_bp,   url_prefix="/api")
 
     return app

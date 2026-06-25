@@ -1,15 +1,34 @@
 import { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../api/axios";
 import Navbar from "../../components/Navbar";
 
+const CONFLICT_TYPES = [
+  { value: "sleep_schedule", label: "Sleep Schedule" },
+  { value: "noise", label: "Noise" },
+  { value: "cleanliness", label: "Cleanliness" },
+  { value: "guests", label: "Guests" },
+  { value: "bathroom", label: "Bathroom" },
+  { value: "other", label: "Other" },
+];
+
 export default function StudentDashboard() {
   const { user } = useAuth();
-  const navigate = useNavigate();
 
   const [prefData, setPrefData] = useState(null);
-  const [loading,  setLoading]  = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [assignment, setAssignment] = useState(null);
+
+  const [conflicts, setConflicts] = useState([]);
+  const [conflictsLoading, setConflictsLoading] = useState(false);
+  const [conflictError, setConflictError] = useState("");
+  const [conflictSuccess, setConflictSuccess] = useState("");
+  const [conflictForm, setConflictForm] = useState({
+    conflict_type: "noise",
+    severity: 3,
+    description: "",
+  });
 
   useEffect(() => {
     const fetchPreferences = async () => {
@@ -22,35 +41,87 @@ export default function StudentDashboard() {
         setLoading(false);
       }
     };
+
     if (user?.student_id) fetchPreferences();
   }, [user]);
 
-  // Derive display tags for the summary
+  useEffect(() => {
+    const fetchAssignment = async () => {
+      if (!user?.student_id) return;
+      try {
+        const sem = `${new Date().getFullYear()}-S1`;
+        const res = await api.get(`/students/${user.student_id}/assignment?semester=${encodeURIComponent(sem)}`);
+        setAssignment(res.data?.assignment || null);
+      } catch (err) {
+        setAssignment(null);
+      }
+    };
+
+    fetchAssignment();
+  }, [user]);
+
+  const fetchMyConflicts = async () => {
+    setConflictsLoading(true);
+    setConflictError("");
+    try {
+      const res = await api.get("/conflicts");
+      setConflicts(res.data?.conflicts || []);
+    } catch (err) {
+      setConflictError(err.response?.data?.error || "Failed to load your conflict history");
+    } finally {
+      setConflictsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMyConflicts();
+  }, []);
+
+  const submitConflict = async (e) => {
+    e.preventDefault();
+    setConflictError("");
+    setConflictSuccess("");
+
+    if (!String(conflictForm.description || "").trim()) {
+      setConflictError("Please add a short description before submitting.");
+      return;
+    }
+
+    try {
+      await api.post("/conflicts", {
+        conflict_type: conflictForm.conflict_type,
+        severity: Number(conflictForm.severity),
+        description: conflictForm.description.trim(),
+      });
+
+      setConflictSuccess("Conflict submitted successfully. Your RA has been notified through the dashboard queue.");
+      setConflictForm((prev) => ({ ...prev, description: "" }));
+      fetchMyConflicts();
+    } catch (err) {
+      setConflictError(err.response?.data?.error || "Could not submit conflict. Ensure you have an active assignment.");
+    }
+  };
+
   const getTraits = (pref) => {
     if (!pref) return [];
     const traits = [];
-    
-    // Sleep
+
     if (pref.sleep_time >= 4) traits.push({ text: "Night Owl", icon: "🌙" });
     else if (pref.sleep_time <= 2) traits.push({ text: "Early Sleeper", icon: "🌅" });
     else traits.push({ text: "Balanced Sleeper", icon: "🕒" });
 
-    // Study
     if (pref.study_habits === "quiet") traits.push({ text: "Quiet Study Style", icon: "📚" });
     else if (pref.study_habits === "group") traits.push({ text: "Group Study Style", icon: "👥" });
     else traits.push({ text: "Flexible Study Style", icon: "📚" });
 
-    // Cleanliness
     if (pref.cleanliness_level >= 4) traits.push({ text: "Highly Organized", icon: "🧹" });
     else if (pref.cleanliness_level <= 2) traits.push({ text: "Relaxed Cleanliness", icon: "📦" });
     else traits.push({ text: "Moderately Tidy", icon: "🧹" });
 
-    // Guests
     if (pref.guest_policy <= 2) traits.push({ text: "Low Guest Activity", icon: "🚪" });
     else if (pref.guest_policy >= 4) traits.push({ text: "High Guest Activity", icon: "🚪" });
     else traits.push({ text: "Moderate Guest Activity", icon: "🚪" });
 
-    // Bathroom
     if (String(pref.bathroom_schedule) === "1") traits.push({ text: "Morning Schedule", icon: "🚿" });
     else if (String(pref.bathroom_schedule) === "2") traits.push({ text: "Evening Schedule", icon: "🚿" });
     else traits.push({ text: "Flexible Schedule", icon: "🚿" });
@@ -75,7 +146,6 @@ export default function StudentDashboard() {
     <div className="page-container">
       <Navbar />
       <div className="main-content">
-        {/* Welcome Section */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "32px", borderBottom: "1px solid var(--border-color)", paddingBottom: "20px" }}>
           <div>
             <h1 style={{ fontSize: "28px", marginBottom: "4px" }}>Hello, {user?.name} 👋</h1>
@@ -93,9 +163,7 @@ export default function StudentDashboard() {
         </div>
 
         <div className="dashboard-grid">
-          {/* Main Content Area */}
           <div>
-            {/* Preference Alert or Summary */}
             {!prefData?.submitted ? (
               <div className="banner banner-warning" style={{ padding: "28px" }}>
                 <span className="banner-icon" style={{ fontSize: "24px" }}>⚠️</span>
@@ -158,26 +226,152 @@ export default function StudentDashboard() {
               </div>
             )}
 
-            {/* Room Assignment Panel */}
             <div className="card">
               <h3 className="card-title">
                 <span>🏠</span> Matching Status
               </h3>
-              <div className="empty-state" style={{ padding: "20px 0" }}>
-                <span className="empty-state-icon">🏠</span>
-                <h4 className="empty-state-title" style={{ fontSize: "15px", marginBottom: "8px" }}>
-                  Your roommate match has not been generated yet.
-                </h4>
-                <p className="empty-state-desc" style={{ maxWidth: "480px" }}>
-                  We are waiting for the current matching cycle to complete. You will be notified when compatibility results are available.
-                </p>
-              </div>
+              {assignment ? (
+                <div style={{ padding: "14px", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", background: "var(--bg-primary)" }}>
+                  <p style={{ marginBottom: "8px", color: "var(--text-main)" }}>
+                    <strong>Room:</strong> {assignment.room_number || "-"} (Block {assignment.hostel_block || "-"})
+                  </p>
+                  <p style={{ marginBottom: "8px", color: "var(--text-main)", textTransform: "capitalize" }}>
+                    <strong>Status:</strong> {String(assignment.status || "").replace("_", " ")}
+                  </p>
+                  <p style={{ marginBottom: "8px", color: "var(--text-main)" }}>
+                    <strong>Roommate:</strong> {assignment.roommate?.name || "Awaiting roommate"}
+                  </p>
+                  <p style={{ marginBottom: 0, color: "var(--text-main)" }}>
+                    <strong>Compatibility Score:</strong> {assignment.compatibility_score ?? "N/A"}
+                  </p>
+                </div>
+              ) : (
+                <div className="empty-state" style={{ padding: "20px 0" }}>
+                  <span className="empty-state-icon">🏠</span>
+                  <h4 className="empty-state-title" style={{ fontSize: "15px", marginBottom: "8px" }}>
+                    Your roommate match has not been generated yet.
+                  </h4>
+                  <p className="empty-state-desc" style={{ maxWidth: "480px" }}>
+                    We are waiting for the current matching cycle to complete. You will be notified when compatibility results are available.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="card">
+              <h3 className="card-title">
+                <span>📝</span> Report Conflict
+              </h3>
+
+              {conflictSuccess && (
+                <div className="banner banner-success" style={{ marginBottom: "10px" }}>
+                  <span className="banner-icon">✓</span>
+                  <div>{conflictSuccess}</div>
+                </div>
+              )}
+
+              {conflictError && (
+                <div className="banner banner-error" style={{ marginBottom: "10px" }}>
+                  <span className="banner-icon">!</span>
+                  <div>{conflictError}</div>
+                </div>
+              )}
+
+              <form onSubmit={submitConflict} style={{ display: "grid", gap: "10px" }}>
+                <div className="form-group">
+                  <label>Conflict Type</label>
+                  <select
+                    className="form-select"
+                    value={conflictForm.conflict_type}
+                    onChange={(e) => setConflictForm((prev) => ({ ...prev, conflict_type: e.target.value }))}
+                  >
+                    {CONFLICT_TYPES.map((type) => (
+                      <option key={type.value} value={type.value}>{type.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Severity (1-5)</label>
+                  <select
+                    className="form-select"
+                    value={conflictForm.severity}
+                    onChange={(e) => setConflictForm((prev) => ({ ...prev, severity: Number(e.target.value) }))}
+                  >
+                    {[1, 2, 3, 4, 5].map((level) => (
+                      <option key={level} value={level}>{level}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Description</label>
+                  <textarea
+                    className="form-input"
+                    rows={4}
+                    value={conflictForm.description}
+                    onChange={(e) => setConflictForm((prev) => ({ ...prev, description: e.target.value }))}
+                    placeholder="Describe the concern and what support you need..."
+                  />
+                </div>
+
+                <div>
+                  <button type="submit" className="btn btn-primary">Submit Conflict</button>
+                </div>
+              </form>
             </div>
           </div>
 
-          {/* Sidebar Area */}
           <div>
-            {/* RA / Support Section */}
+            <div className="card">
+              <h3 className="card-title">
+                <span>📋</span> My Conflict History
+              </h3>
+
+              <button className="btn btn-secondary" style={{ marginBottom: "10px", padding: "6px 10px", fontSize: "13px" }} onClick={fetchMyConflicts}>
+                Refresh
+              </button>
+
+              <div className="table-responsive">
+                <table className="custom-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Type</th>
+                      <th>Severity</th>
+                      <th>Status</th>
+                      <th>Reported</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {conflictsLoading ? (
+                      <tr>
+                        <td colSpan="5" style={{ textAlign: "center", color: "var(--text-muted)", padding: "14px" }}>
+                          Loading conflicts...
+                        </td>
+                      </tr>
+                    ) : conflicts.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" style={{ textAlign: "center", color: "var(--text-muted)", padding: "14px" }}>
+                          No conflicts reported yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      conflicts.map((conflict) => (
+                        <tr key={conflict.conflict_id}>
+                          <td>#{conflict.conflict_id}</td>
+                          <td style={{ textTransform: "capitalize" }}>{String(conflict.conflict_type || "").replace("_", " ")}</td>
+                          <td>{conflict.severity}</td>
+                          <td><span className="badge badge-warning" style={{ textTransform: "capitalize" }}>{String(conflict.status || "").replace("_", " ")}</span></td>
+                          <td>{conflict.created_at ? new Date(conflict.created_at).toLocaleDateString() : "-"}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             <div className="card">
               <h3 className="card-title">
                 <span>🤝</span> Support &amp; Community
@@ -190,7 +384,7 @@ export default function StudentDashboard() {
                   Need Relationship Support?
                 </span>
                 <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block" }}>
-                  Contact your assigned Resident Advisor for support and conflict resolution.
+                  Your report is automatically routed to your block Resident Advisor.
                 </span>
               </div>
             </div>
