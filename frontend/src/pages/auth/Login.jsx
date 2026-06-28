@@ -79,6 +79,11 @@ export default function Login() {
               placeholder="••••••••"
               className="form-input"
             />
+            <div style={{ textAlign: "right", marginTop: "8px" }}>
+              <Link to="/forgot-password" style={{ color: "var(--primary)", fontSize: "13px", textDecoration: "none", fontWeight: 600 }}>
+                Forgot password?
+              </Link>
+            </div>
           </div>
 
           <button type="submit" className="btn btn-primary" style={{ width: "100%", marginTop: "12px" }} disabled={loading}>

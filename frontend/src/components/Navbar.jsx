@@ -1,13 +1,20 @@
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import api from "../api/axios";
 
 export default function Navbar() {
   const { user, role, logout } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
+  const handleLogout = async () => {
+    try {
+      await api.post("/auth/logout");
+    } catch (err) {
+      // Token may already be expired/revoked; local logout should still proceed.
+    } finally {
+      logout();
+      navigate("/login");
+    }
   };
 
   const getRoleLabel = (r) => {

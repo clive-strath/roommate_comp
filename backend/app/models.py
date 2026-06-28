@@ -225,3 +225,42 @@ class ConflictLog(db.Model):
             "room_number": room.room_number if room else None,
             "hostel_block": room.hostel_block if room else None,
         }
+
+
+class PasswordResetToken(db.Model):
+    __tablename__ = "password_reset_tokens"
+
+    reset_id      = db.Column(db.Integer, primary_key=True)
+    user_type     = db.Column(db.String(20), nullable=False)  # student | admin
+    user_id       = db.Column(db.Integer, nullable=False)
+    token_hash    = db.Column(db.String(64), nullable=False, unique=True)
+    request_ip    = db.Column(db.String(45), nullable=True)
+    expires_at    = db.Column(db.DateTime(timezone=True), nullable=False)
+    used_at       = db.Column(db.DateTime(timezone=True), nullable=True)
+    created_at    = db.Column(db.DateTime(timezone=True), default=now_utc)
+    updated_at    = db.Column(db.DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+
+class TokenBlocklist(db.Model):
+    __tablename__ = "token_blocklist"
+
+    id            = db.Column(db.Integer, primary_key=True)
+    jti           = db.Column(db.String(36), nullable=False, unique=True, index=True)
+    user_identity = db.Column(db.String(64), nullable=False, index=True)
+    token_type    = db.Column(db.String(20), nullable=False)
+    expires_at    = db.Column(db.DateTime(timezone=True), nullable=False)
+    revoked_at    = db.Column(db.DateTime(timezone=True), default=now_utc)
+
+
+class AuditLog(db.Model):
+    __tablename__ = "audit_log"
+
+    log_id        = db.Column(db.Integer, primary_key=True)
+    actor_type    = db.Column(db.String(20), nullable=False)  # student | admin | system
+    actor_id      = db.Column(db.Integer, nullable=False)
+    action        = db.Column(db.String(50), nullable=False)
+    target_table  = db.Column(db.String(50), nullable=False)
+    target_id     = db.Column(db.Integer, nullable=True)
+    detail        = db.Column(db.Text, nullable=True)
+    ip_address    = db.Column(db.String(45), nullable=True)
+    created_at    = db.Column(db.DateTime(timezone=True), default=now_utc)

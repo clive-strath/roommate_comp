@@ -4,6 +4,8 @@ import ProtectedRoute    from "./components/ProtectedRoute";
 
 import StudentRegister  from "./pages/auth/StudentRegister";
 import Login            from "./pages/auth/Login";
+import ForgotPassword   from "./pages/auth/ForgotPassword";
+import ResetPassword    from "./pages/auth/ResetPassword";
 import StudentDashboard from "./pages/dashboards/StudentDashboard";
 import AdminDashboard   from "./pages/dashboards/AdminDashboard";
 import RADashboard      from "./pages/dashboards/RADashboard";
@@ -18,6 +20,8 @@ export default function App() {
           <Route path="/"         element={<Navigate to="/login" replace />} />
           <Route path="/register" element={<StudentRegister />} />
           <Route path="/login"    element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           {/* Student */}
           <Route path="/student/dashboard" element={

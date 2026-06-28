@@ -5,6 +5,7 @@ from ..models import AdminUser, Student, StudentPreference, Room, RoomAssignment
 from . import role_required
 from ..services.allocation_service import generate_allocation_preview, confirm_allocation
 from ..services.compatibility_engine import calculate_compatibility, is_flagged, build_compatibility_graph, run_maximum_weight_matching
+from ..security import validate_password_policy
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -29,6 +30,10 @@ def create_staff_account():
 
     if AdminUser.query.filter_by(email=data["email"]).first():
         return jsonify({"error": "Email already registered"}), 409
+
+    password_errors = validate_password_policy(data["password"])
+    if password_errors:
+        return jsonify({"error": " ; ".join(password_errors)}), 400
 
     hashed = bcrypt.generate_password_hash(data["password"]).decode("utf-8")
 
