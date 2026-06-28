@@ -13,6 +13,10 @@ export default function AdminDashboard() {
   const [filterYear, setFilterYear] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [actionMessage, setActionMessage] = useState("");
+  const [studentsPage, setStudentsPage] = useState(1);
+  const [studentsPerPage] = useState(20);
+  const [studentsTotalPages, setStudentsTotalPages] = useState(1);
+  const [exportingAssignmentsSummaryCsv, setExportingAssignmentsSummaryCsv] = useState(false);
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -46,14 +50,33 @@ export default function AdminDashboard() {
   });
   const [confirmedAssignments, setConfirmedAssignments] = useState([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [assignmentsPage, setAssignmentsPage] = useState(1);
+  const [assignmentsPerPage] = useState(20);
+  const [assignmentsTotalPages, setAssignmentsTotalPages] = useState(1);
+  const [assignmentsTotal, setAssignmentsTotal] = useState(0);
+  const [assignmentFilters, setAssignmentFilters] = useState({
+    status: "",
+    hostel_block: "",
+    search: "",
+    sort_by: "created_at",
+    sort_order: "desc",
+  });
   const [undoAssignmentLoadingId, setUndoAssignmentLoadingId] = useState(null);
   const [conflicts, setConflicts] = useState([]);
   const [conflictFilters, setConflictFilters] = useState({
     status: "",
     severity: "",
     type: "",
+    from_date: "",
+    to_date: "",
+    sort_by: "created_at",
+    sort_order: "desc",
   });
   const [conflictsLoading, setConflictsLoading] = useState(false);
+  const [conflictsPage, setConflictsPage] = useState(1);
+  const [conflictsPerPage] = useState(20);
+  const [conflictsTotalPages, setConflictsTotalPages] = useState(1);
+  const [conflictsTotal, setConflictsTotal] = useState(0);
   const [conflictError, setConflictError] = useState("");
   const [conflictUpdateOpen, setConflictUpdateOpen] = useState(false);
   const [selectedConflict, setSelectedConflict] = useState(null);
@@ -476,13 +499,55 @@ export default function AdminDashboard() {
   };
 
   const fetchStudents = async () => {
+    setLoading(true);
     try {
-      const res = await api.get(`/admin/students?semester=${encodeURIComponent(semester)}`);
+      const params = new URLSearchParams();
+      params.set("semester", semester);
+      params.set("page", String(studentsPage));
+      params.set("per_page", String(studentsPerPage));
+      if (search.trim()) params.set("search", search.trim());
+      if (filterGender) params.set("gender", filterGender);
+      if (filterYear) params.set("year", filterYear);
+      if (filterStatus) params.set("preferences_status", filterStatus);
+
+      const res = await api.get(`/admin/students?${params.toString()}`);
       setData(res.data);
+      setStudentsTotalPages(res.data?.total_pages || 1);
     } catch (err) {
       console.error("Failed to load students");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExportAssignmentsSummaryCsv = async () => {
+    setExportingAssignmentsSummaryCsv(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("semester", semester);
+      if (assignmentFilters.search.trim()) params.set("search", assignmentFilters.search.trim());
+      if (assignmentFilters.status) params.set("status", assignmentFilters.status);
+      if (assignmentFilters.hostel_block) params.set("hostel_block", assignmentFilters.hostel_block);
+      if (assignmentFilters.sort_by) params.set("sort_by", assignmentFilters.sort_by);
+      if (assignmentFilters.sort_order) params.set("sort_order", assignmentFilters.sort_order);
+
+      const res = await api.get(`/admin/reports/assignments-summary.csv?${params.toString()}`, {
+        responseType: "blob",
+      });
+
+      const blob = new Blob([res.data], { type: "text/csv;charset=utf-8;" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `assignments_summary_${semester}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setAllocError(err.response?.data?.error || "Failed to export assignments summary CSV report.");
+    } finally {
+      setExportingAssignmentsSummaryCsv(false);
     }
   };
 
@@ -503,11 +568,25 @@ export default function AdminDashboard() {
   const fetchConfirmedAssignments = async () => {
     setAssignmentsLoading(true);
     try {
-      const res = await api.get(`/admin/allocation/assignments?semester=${encodeURIComponent(semester)}`);
+      const params = new URLSearchParams();
+      params.set("semester", semester);
+      params.set("page", String(assignmentsPage));
+      params.set("per_page", String(assignmentsPerPage));
+      if (assignmentFilters.status) params.set("status", assignmentFilters.status);
+      if (assignmentFilters.hostel_block) params.set("hostel_block", assignmentFilters.hostel_block);
+      if (assignmentFilters.search.trim()) params.set("search", assignmentFilters.search.trim());
+      if (assignmentFilters.sort_by) params.set("sort_by", assignmentFilters.sort_by);
+      if (assignmentFilters.sort_order) params.set("sort_order", assignmentFilters.sort_order);
+
+      const res = await api.get(`/admin/allocation/assignments?${params.toString()}`);
       setConfirmedAssignments(res.data?.assignments || []);
+      setAssignmentsTotalPages(res.data?.total_pages || 1);
+      setAssignmentsTotal(res.data?.total || 0);
     } catch (err) {
       console.error("Failed to load confirmed assignments");
       setConfirmedAssignments([]);
+      setAssignmentsTotalPages(1);
+      setAssignmentsTotal(0);
     } finally {
       setAssignmentsLoading(false);
     }
@@ -523,7 +602,7 @@ export default function AdminDashboard() {
 
     try {
       await api.patch(`/admin/allocation/assignments/${assignment.assignment_id}/undo`);
-      setAllocSuccess("Assignment undone successfully. Room is now empty.");
+      setAllocSuccess("Assignment deleted successfully. Room is now empty.");
       fetchConfirmedAssignments();
       fetchStudents();
       fetchRoomAvailability();
@@ -539,16 +618,24 @@ export default function AdminDashboard() {
     setConflictError("");
     try {
       const params = new URLSearchParams();
+      params.set("page", String(conflictsPage));
+      params.set("per_page", String(conflictsPerPage));
       if (conflictFilters.status) params.set("status", conflictFilters.status);
       if (conflictFilters.severity) params.set("severity", conflictFilters.severity);
       if (conflictFilters.type) params.set("type", conflictFilters.type);
+      if (conflictFilters.from_date) params.set("from_date", conflictFilters.from_date);
+      if (conflictFilters.to_date) params.set("to_date", conflictFilters.to_date);
+      if (conflictFilters.sort_by) params.set("sort_by", conflictFilters.sort_by);
+      if (conflictFilters.sort_order) params.set("sort_order", conflictFilters.sort_order);
 
-      const query = params.toString();
-      const endpoint = query ? `/conflicts?${query}` : "/conflicts";
-      const res = await api.get(endpoint);
+      const res = await api.get(`/conflicts?${params.toString()}`);
       setConflicts(res.data?.conflicts || []);
+      setConflictsTotalPages(res.data?.total_pages || 1);
+      setConflictsTotal(res.data?.total || 0);
     } catch (err) {
       setConflictError(err.response?.data?.error || "Failed to load conflicts");
+      setConflictsTotalPages(1);
+      setConflictsTotal(0);
     } finally {
       setConflictsLoading(false);
     }
@@ -597,20 +684,66 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    fetchStudents();
     fetchRoomAvailability();
-    fetchConflicts();
-    fetchConfirmedAssignments();
   }, []);
 
   useEffect(() => {
     fetchStudents();
+  }, [semester, studentsPage, studentsPerPage, search, filterGender, filterYear, filterStatus]);
+
+  useEffect(() => {
+    setStudentsPage(1);
+  }, [semester, search, filterGender, filterYear, filterStatus]);
+
+  useEffect(() => {
     fetchConfirmedAssignments();
-  }, [semester]);
+  }, [
+    semester,
+    assignmentsPage,
+    assignmentsPerPage,
+    assignmentFilters.status,
+    assignmentFilters.hostel_block,
+    assignmentFilters.search,
+    assignmentFilters.sort_by,
+    assignmentFilters.sort_order,
+  ]);
+
+  useEffect(() => {
+    setAssignmentsPage(1);
+  }, [
+    semester,
+    assignmentFilters.status,
+    assignmentFilters.hostel_block,
+    assignmentFilters.search,
+    assignmentFilters.sort_by,
+    assignmentFilters.sort_order,
+  ]);
 
   useEffect(() => {
     fetchConflicts();
-  }, [conflictFilters.status, conflictFilters.severity, conflictFilters.type]);
+  }, [
+    conflictsPage,
+    conflictsPerPage,
+    conflictFilters.status,
+    conflictFilters.severity,
+    conflictFilters.type,
+    conflictFilters.from_date,
+    conflictFilters.to_date,
+    conflictFilters.sort_by,
+    conflictFilters.sort_order,
+  ]);
+
+  useEffect(() => {
+    setConflictsPage(1);
+  }, [
+    conflictFilters.status,
+    conflictFilters.severity,
+    conflictFilters.type,
+    conflictFilters.from_date,
+    conflictFilters.to_date,
+    conflictFilters.sort_by,
+    conflictFilters.sort_order,
+  ]);
 
   const openCount = conflicts.filter((c) => c.status === "open").length;
   const mediationCount = conflicts.filter((c) => c.status === "in_mediation").length;
@@ -745,15 +878,6 @@ export default function AdminDashboard() {
     }
   };
 
-  const filtered = data.students.filter(s => {
-    const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase()) ||
-                          s.student_number.toLowerCase().includes(search.toLowerCase());
-    const matchesGender = filterGender ? s.gender === filterGender : true;
-    const matchesYear = filterYear ? String(s.year) === filterYear : true;
-    const matchesStatus = filterStatus ? s.preferences_status === filterStatus : true;
-    return matchesSearch && matchesGender && matchesYear && matchesStatus;
-  });
-
   const scrollToSection = (sectionId) => {
     const target = document.getElementById(sectionId);
     if (target) {
@@ -862,7 +986,10 @@ export default function AdminDashboard() {
               
               <select
                 value={filterStatus}
-                onChange={e => setFilterStatus(e.target.value)}
+                onChange={e => {
+                  setFilterStatus(e.target.value);
+                  setStudentsPage(1);
+                }}
                 className="form-select"
                 style={{ width: "auto", padding: "8px 12px", fontSize: "13.5px" }}
               >
@@ -873,7 +1000,10 @@ export default function AdminDashboard() {
 
               <select
                 value={filterGender}
-                onChange={e => setFilterGender(e.target.value)}
+                onChange={e => {
+                  setFilterGender(e.target.value);
+                  setStudentsPage(1);
+                }}
                 className="form-select"
                 style={{ width: "auto", padding: "8px 12px", fontSize: "13.5px" }}
               >
@@ -885,7 +1015,10 @@ export default function AdminDashboard() {
 
               <select
                 value={filterYear}
-                onChange={e => setFilterYear(e.target.value)}
+                onChange={e => {
+                  setFilterYear(e.target.value);
+                  setStudentsPage(1);
+                }}
                 className="form-select"
                 style={{ width: "auto", padding: "8px 12px", fontSize: "13.5px" }}
               >
@@ -894,6 +1027,7 @@ export default function AdminDashboard() {
                   <option key={y} value={y}>Year {y}</option>
                 ))}
               </select>
+
             </div>
           </div>
 
@@ -917,14 +1051,14 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.length === 0 ? (
+                  {data.students.length === 0 ? (
                     <tr>
                       <td colSpan="8" style={{ textAlign: "center", padding: "30px", color: "var(--text-muted)" }}>
                         No matching student profiles found.
                       </td>
                     </tr>
                   ) : (
-                    filtered.map((s) => (
+                    data.students.map((s) => (
                       <tr key={s.student_id}>
                         <td style={{ fontWeight: "600" }}>{s.name}</td>
                         <td>{s.student_number}</td>
@@ -963,6 +1097,32 @@ export default function AdminDashboard() {
               </table>
             </div>
           )}
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "12px" }}>
+            <div style={{ color: "var(--text-muted)", fontSize: "13px" }}>
+              Page {studentsPage} of {studentsTotalPages} ({data.total} records)
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ padding: "6px 10px", fontSize: "12px" }}
+                disabled={studentsPage <= 1 || loading}
+                onClick={() => setStudentsPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ padding: "6px 10px", fontSize: "12px" }}
+                disabled={studentsPage >= studentsTotalPages || loading}
+                onClick={() => setStudentsPage((p) => Math.min(studentsTotalPages, p + 1))}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
 
         <div id="assignments-section" className="card">
@@ -970,9 +1130,72 @@ export default function AdminDashboard() {
             <h3 className="card-title" style={{ margin: 0 }}>
               <span>✅</span> Confirmed Assignments ({semester})
             </h3>
-            <button className="btn btn-secondary" style={{ padding: "8px 10px", fontSize: "13px" }} onClick={fetchConfirmedAssignments}>
-              Refresh
-            </button>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              <input
+                type="text"
+                value={assignmentFilters.search}
+                onChange={(e) => setAssignmentFilters((prev) => ({ ...prev, search: e.target.value }))}
+                placeholder="Search room or student..."
+                className="form-input"
+                style={{ width: "220px", padding: "8px 10px", fontSize: "13px" }}
+              />
+              <select
+                value={assignmentFilters.status}
+                onChange={(e) => setAssignmentFilters((prev) => ({ ...prev, status: e.target.value }))}
+                className="form-select"
+                style={{ width: "auto", padding: "8px 10px", fontSize: "13px" }}
+              >
+                <option value="">Active + Awaiting</option>
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="awaiting_roommate">Awaiting roommate</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="completed">Completed</option>
+                <option value="archived">Archived</option>
+              </select>
+              <select
+                value={assignmentFilters.hostel_block}
+                onChange={(e) => setAssignmentFilters((prev) => ({ ...prev, hostel_block: e.target.value }))}
+                className="form-select"
+                style={{ width: "auto", padding: "8px 10px", fontSize: "13px" }}
+              >
+                <option value="">All Blocks</option>
+                <option value="A">Block A</option>
+                <option value="B">Block B</option>
+                <option value="C">Block C</option>
+              </select>
+              <select
+                value={assignmentFilters.sort_by}
+                onChange={(e) => setAssignmentFilters((prev) => ({ ...prev, sort_by: e.target.value }))}
+                className="form-select"
+                style={{ width: "auto", padding: "8px 10px", fontSize: "13px" }}
+              >
+                <option value="created_at">Sort: Created Date</option>
+                <option value="score">Sort: Compatibility Score</option>
+                <option value="room_number">Sort: Room Number</option>
+              </select>
+              <select
+                value={assignmentFilters.sort_order}
+                onChange={(e) => setAssignmentFilters((prev) => ({ ...prev, sort_order: e.target.value }))}
+                className="form-select"
+                style={{ width: "auto", padding: "8px 10px", fontSize: "13px" }}
+              >
+                <option value="desc">Order: Descending</option>
+                <option value="asc">Order: Ascending</option>
+              </select>
+              <button className="btn btn-secondary" style={{ padding: "8px 10px", fontSize: "13px" }} onClick={fetchConfirmedAssignments}>
+                Refresh
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ padding: "8px 10px", fontSize: "13px" }}
+                onClick={handleExportAssignmentsSummaryCsv}
+                disabled={exportingAssignmentsSummaryCsv}
+              >
+                {exportingAssignmentsSummaryCsv ? "Exporting..." : "Export Assignments CSV"}
+              </button>
+            </div>
           </div>
 
           <div className="table-responsive">
@@ -1025,6 +1248,32 @@ export default function AdminDashboard() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "12px" }}>
+            <div style={{ color: "var(--text-muted)", fontSize: "13px" }}>
+              Page {assignmentsPage} of {assignmentsTotalPages} ({assignmentsTotal} records)
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ padding: "6px 10px", fontSize: "12px" }}
+                disabled={assignmentsPage <= 1 || assignmentsLoading}
+                onClick={() => setAssignmentsPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ padding: "6px 10px", fontSize: "12px" }}
+                disabled={assignmentsPage >= assignmentsTotalPages || assignmentsLoading}
+                onClick={() => setAssignmentsPage((p) => Math.min(assignmentsTotalPages, p + 1))}
+              >
+                Next
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1307,6 +1556,41 @@ export default function AdminDashboard() {
                 <option value="bathroom">Bathroom</option>
                 <option value="other">Other</option>
               </select>
+              <input
+                type="date"
+                value={conflictFilters.from_date}
+                onChange={(e) => setConflictFilters((prev) => ({ ...prev, from_date: e.target.value }))}
+                className="form-input"
+                style={{ width: "auto", padding: "8px 10px", fontSize: "13px" }}
+                title="From date"
+              />
+              <input
+                type="date"
+                value={conflictFilters.to_date}
+                onChange={(e) => setConflictFilters((prev) => ({ ...prev, to_date: e.target.value }))}
+                className="form-input"
+                style={{ width: "auto", padding: "8px 10px", fontSize: "13px" }}
+                title="To date"
+              />
+              <select
+                value={conflictFilters.sort_by}
+                onChange={(e) => setConflictFilters((prev) => ({ ...prev, sort_by: e.target.value }))}
+                className="form-select"
+                style={{ width: "auto", padding: "8px 10px", fontSize: "13px" }}
+              >
+                <option value="created_at">Sort: Created Date</option>
+                <option value="severity">Sort: Severity</option>
+                <option value="status">Sort: Status</option>
+              </select>
+              <select
+                value={conflictFilters.sort_order}
+                onChange={(e) => setConflictFilters((prev) => ({ ...prev, sort_order: e.target.value }))}
+                className="form-select"
+                style={{ width: "auto", padding: "8px 10px", fontSize: "13px" }}
+              >
+                <option value="desc">Order: Descending</option>
+                <option value="asc">Order: Ascending</option>
+              </select>
               <button className="btn btn-secondary" style={{ padding: "8px 10px", fontSize: "13px" }} onClick={fetchConflicts}>
                 Refresh
               </button>
@@ -1371,6 +1655,32 @@ export default function AdminDashboard() {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "12px" }}>
+              <div style={{ color: "var(--text-muted)", fontSize: "13px" }}>
+                Page {conflictsPage} of {conflictsTotalPages} ({conflictsTotal} records)
+              </div>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: "6px 10px", fontSize: "12px" }}
+                  disabled={conflictsPage <= 1 || conflictsLoading}
+                  onClick={() => setConflictsPage((p) => Math.max(1, p - 1))}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: "6px 10px", fontSize: "12px" }}
+                  disabled={conflictsPage >= conflictsTotalPages || conflictsLoading}
+                  onClick={() => setConflictsPage((p) => Math.min(conflictsTotalPages, p + 1))}
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </div>
 

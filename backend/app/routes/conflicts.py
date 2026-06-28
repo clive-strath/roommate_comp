@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt, get_jwt_identity, jwt_required
+from sqlalchemy import asc, desc
 
 from ..extensions import db
 from ..models import AdminUser, ConflictLog, Room, RoomAssignment
@@ -29,6 +30,34 @@ RA_TRANSITIONS = {
 
 def now_utc():
     return datetime.now(timezone.utc)
+
+
+def _parse_pagination_params(default_per_page=20, max_per_page=100):
+    try:
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", default_per_page))
+    except ValueError:
+        return None, None, (jsonify({"error": "page and per_page must be integers"}), 400)
+
+    if page < 1:
+        page = 1
+    if per_page < 1:
+        per_page = default_per_page
+    if per_page > max_per_page:
+        per_page = max_per_page
+
+    return page, per_page, None
+
+
+def _parse_date_filter(date_value, label):
+    if not date_value:
+        return None, None
+
+    try:
+        parsed = datetime.strptime(date_value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        return parsed, None
+    except ValueError:
+        return None, (jsonify({"error": f"{label} must be in YYYY-MM-DD format"}), 400)
 
 
 def _get_request_json():
@@ -163,9 +192,23 @@ def create_conflict_for_assignment(assignment_id):
 @jwt_required()
 def list_conflicts():
     role, user_id = _get_current_role_and_id()
+    page, per_page, pagination_error = _parse_pagination_params(default_per_page=20, max_per_page=100)
+    if pagination_error:
+        return pagination_error
+
     status_filter = request.args.get("status")
     severity_filter = request.args.get("severity")
     type_filter = request.args.get("type")
+    from_date_raw = request.args.get("from_date")
+    to_date_raw = request.args.get("to_date")
+
+    from_date, from_error = _parse_date_filter(from_date_raw, "from_date")
+    if from_error:
+        return from_error
+
+    to_date, to_error = _parse_date_filter(to_date_raw, "to_date")
+    if to_error:
+        return to_error
 
     q = ConflictLog.query.join(RoomAssignment, ConflictLog.assignment_id == RoomAssignment.assignment_id) \
         .join(Room, RoomAssignment.room_id == Room.room_id)
@@ -188,14 +231,45 @@ def list_conflicts():
     if type_filter:
         q = q.filter(ConflictLog.conflict_type == type_filter)
 
-    conflicts = q.order_by(ConflictLog.created_at.desc()).all()
-    return jsonify({"conflicts": [c.to_dict() for c in conflicts], "total": len(conflicts)}), 200
+    if from_date:
+        q = q.filter(ConflictLog.created_at >= from_date)
+    if to_date:
+        q = q.filter(ConflictLog.created_at < to_date.replace(hour=23, minute=59, second=59, microsecond=999999))
+
+    sort_by = (request.args.get("sort_by") or "created_at").strip().lower()
+    sort_order = (request.args.get("sort_order") or "desc").strip().lower()
+    sort_columns = {
+        "created_at": ConflictLog.created_at,
+        "severity": ConflictLog.severity,
+        "status": ConflictLog.status,
+    }
+    sort_col = sort_columns.get(sort_by, ConflictLog.created_at)
+    order_func = asc if sort_order == "asc" else desc
+
+    pagination = q.order_by(order_func(sort_col), desc(ConflictLog.conflict_id)).paginate(
+        page=page,
+        per_page=per_page,
+        error_out=False,
+    )
+    conflicts = pagination.items
+    return jsonify({
+        "conflicts": [c.to_dict() for c in conflicts],
+        "total": pagination.total,
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "total_pages": pagination.pages,
+        "has_next": pagination.has_next,
+        "has_prev": pagination.has_prev,
+    }), 200
 
 
 @conflicts_bp.route("/ra/conflicts", methods=["GET"])
 @role_required("resident_advisor")
 def list_ra_conflicts():
     ra_user = AdminUser.query.get_or_404(int(get_jwt_identity()))
+    page, per_page, pagination_error = _parse_pagination_params(default_per_page=20, max_per_page=100)
+    if pagination_error:
+        return pagination_error
 
     q = ConflictLog.query.join(RoomAssignment, ConflictLog.assignment_id == RoomAssignment.assignment_id) \
         .join(Room, RoomAssignment.room_id == Room.room_id) \
@@ -204,6 +278,16 @@ def list_ra_conflicts():
     status_filter = request.args.get("status")
     severity_filter = request.args.get("severity")
     type_filter = request.args.get("type")
+    from_date_raw = request.args.get("from_date")
+    to_date_raw = request.args.get("to_date")
+
+    from_date, from_error = _parse_date_filter(from_date_raw, "from_date")
+    if from_error:
+        return from_error
+
+    to_date, to_error = _parse_date_filter(to_date_raw, "to_date")
+    if to_error:
+        return to_error
 
     if status_filter:
         q = q.filter(ConflictLog.status == status_filter)
@@ -215,8 +299,36 @@ def list_ra_conflicts():
     if type_filter:
         q = q.filter(ConflictLog.conflict_type == type_filter)
 
-    conflicts = q.order_by(ConflictLog.created_at.desc()).all()
-    return jsonify({"conflicts": [c.to_dict() for c in conflicts], "total": len(conflicts)}), 200
+    if from_date:
+        q = q.filter(ConflictLog.created_at >= from_date)
+    if to_date:
+        q = q.filter(ConflictLog.created_at < to_date.replace(hour=23, minute=59, second=59, microsecond=999999))
+
+    sort_by = (request.args.get("sort_by") or "created_at").strip().lower()
+    sort_order = (request.args.get("sort_order") or "desc").strip().lower()
+    sort_columns = {
+        "created_at": ConflictLog.created_at,
+        "severity": ConflictLog.severity,
+        "status": ConflictLog.status,
+    }
+    sort_col = sort_columns.get(sort_by, ConflictLog.created_at)
+    order_func = asc if sort_order == "asc" else desc
+
+    pagination = q.order_by(order_func(sort_col), desc(ConflictLog.conflict_id)).paginate(
+        page=page,
+        per_page=per_page,
+        error_out=False,
+    )
+    conflicts = pagination.items
+    return jsonify({
+        "conflicts": [c.to_dict() for c in conflicts],
+        "total": pagination.total,
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "total_pages": pagination.pages,
+        "has_next": pagination.has_next,
+        "has_prev": pagination.has_prev,
+    }), 200
 
 
 @conflicts_bp.route("/conflicts/<int:conflict_id>", methods=["GET"])
