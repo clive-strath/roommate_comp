@@ -325,12 +325,12 @@ def resolve_escalation(conflict_id):
     data = _get_request_json()
     conflict = _get_conflict_or_404(conflict_id)
 
-    if conflict.status not in {"escalated", "in_mediation"}:
-        return jsonify({"error": "Only escalated or in_mediation conflicts can be handled here"}), 400
+    if conflict.status != "escalated":
+        return jsonify({"error": "Only escalated conflicts can be resolved by admin"}), 400
 
     next_status = data.get("status", "resolved")
-    if next_status not in {"in_mediation", "resolved"}:
-        return jsonify({"error": "status must be in_mediation or resolved"}), 400
+    if next_status != "resolved":
+        return jsonify({"error": "status must be resolved"}), 400
 
     if data.get("actions_taken") is not None:
         conflict.actions_taken = data.get("actions_taken")
@@ -343,9 +343,8 @@ def resolve_escalation(conflict_id):
         return jsonify({"error": "resolution_notes is required to resolve escalated conflict"}), 400
 
     conflict.status = next_status
-    if next_status == "resolved":
-        conflict.resolved_by = admin_id
-        conflict.resolved_at = now_utc()
+    conflict.resolved_by = admin_id
+    conflict.resolved_at = now_utc()
 
     db.session.commit()
 

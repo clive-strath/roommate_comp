@@ -46,6 +46,7 @@ export default function AdminDashboard() {
   });
   const [confirmedAssignments, setConfirmedAssignments] = useState([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [undoAssignmentLoadingId, setUndoAssignmentLoadingId] = useState(null);
   const [conflicts, setConflicts] = useState([]);
   const [conflictFilters, setConflictFilters] = useState({
     status: "",
@@ -54,6 +55,10 @@ export default function AdminDashboard() {
   });
   const [conflictsLoading, setConflictsLoading] = useState(false);
   const [conflictError, setConflictError] = useState("");
+  const [conflictUpdateOpen, setConflictUpdateOpen] = useState(false);
+  const [selectedConflict, setSelectedConflict] = useState(null);
+  const [conflictResolutionNotes, setConflictResolutionNotes] = useState("");
+  const [conflictUpdateSubmitting, setConflictUpdateSubmitting] = useState(false);
 
   // Breakdown modal
   const [breakdownOpen, setBreakdownOpen] = useState(false);
@@ -219,10 +224,21 @@ export default function AdminDashboard() {
     setBreakdownOpen(true);
   };
 
+  const handleCloseBreakdown = () => {
+    setBreakdownOpen(false);
+    setSelectedBreakdown(null);
+  };
+
   const handleOpenOverride = (row) => {
     setOverrideTarget(row);
     setOverrideReplacementId("");
     setOverrideOpen(true);
+  };
+
+  const handleCloseOverride = () => {
+    setOverrideOpen(false);
+    setOverrideTarget(null);
+    setOverrideReplacementId("");
   };
 
   const handleSubmitOverride = async (e) => {
@@ -300,8 +316,7 @@ export default function AdminDashboard() {
       setSuggestions(nextSuggestions);
       setSingles(nextSingles);
       refreshPreviewMeta(nextSuggestions, nextSingles);
-      setOverrideOpen(false);
-      setOverrideTarget(null);
+      handleCloseOverride();
       setAllocSuccess("Match override applied and compatibility score recalculated.");
     } catch (err) {
       setAllocError(err.response?.data?.error || err.message || "Failed to override match.");
@@ -498,6 +513,27 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleUndoAssignment = async (assignment) => {
+    const roomLabel = assignment.room_number ? `Room ${assignment.room_number}` : "this room";
+    const proceed = window.confirm(`Undo assignment for ${roomLabel}? This will free the room and unassign the students.`);
+    if (!proceed) return;
+
+    clearAllocationBanners();
+    setUndoAssignmentLoadingId(assignment.assignment_id);
+
+    try {
+      await api.patch(`/admin/allocation/assignments/${assignment.assignment_id}/undo`);
+      setAllocSuccess("Assignment undone successfully. Room is now empty.");
+      fetchConfirmedAssignments();
+      fetchStudents();
+      fetchRoomAvailability();
+    } catch (err) {
+      setAllocError(err.response?.data?.error || "Failed to undo assignment.");
+    } finally {
+      setUndoAssignmentLoadingId(null);
+    }
+  };
+
   const fetchConflicts = async () => {
     setConflictsLoading(true);
     setConflictError("");
@@ -515,6 +551,48 @@ export default function AdminDashboard() {
       setConflictError(err.response?.data?.error || "Failed to load conflicts");
     } finally {
       setConflictsLoading(false);
+    }
+  };
+
+  const handleOpenConflictUpdate = (conflict) => {
+    if (conflict.status !== "escalated") return;
+    setSelectedConflict(conflict);
+    setConflictResolutionNotes(conflict.resolution_notes || "");
+    setConflictError("");
+    setConflictUpdateOpen(true);
+  };
+
+  const handleCloseConflictUpdate = () => {
+    setConflictUpdateOpen(false);
+    setSelectedConflict(null);
+    setConflictResolutionNotes("");
+  };
+
+  const handleSubmitConflictUpdate = async (e) => {
+    e.preventDefault();
+    if (!selectedConflict) return;
+
+    const notes = conflictResolutionNotes.trim();
+    if (!notes) {
+      setConflictError("resolution_notes is required to resolve escalated conflict");
+      return;
+    }
+
+    setConflictUpdateSubmitting(true);
+    setConflictError("");
+    try {
+      await api.put(`/conflicts/${selectedConflict.conflict_id}/escalation`, {
+        status: "resolved",
+        resolution_notes: notes,
+      });
+      setActionMessage(`Conflict #${selectedConflict.conflict_id} resolved successfully.`);
+      setTimeout(() => setActionMessage(""), 3000);
+      handleCloseConflictUpdate();
+      fetchConflicts();
+    } catch (err) {
+      setConflictError(err.response?.data?.error || "Failed to resolve conflict");
+    } finally {
+      setConflictUpdateSubmitting(false);
     }
   };
 
@@ -676,10 +754,40 @@ export default function AdminDashboard() {
     return matchesSearch && matchesGender && matchesYear && matchesStatus;
   });
 
+  const scrollToSection = (sectionId) => {
+    const target = document.getElementById(sectionId);
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
   return (
     <div className="page-container">
       <Navbar />
       <div className="main-content">
+        <div className="admin-layout">
+          <aside className="admin-sidebar">
+            <div className="admin-sidebar-card">
+              <h3 className="admin-sidebar-title">Admin Navigation</h3>
+              <div className="admin-sidebar-links">
+                <button type="button" className="admin-nav-btn" onClick={() => scrollToSection("overview-section")}>Overview</button>
+                <button type="button" className="admin-nav-btn" onClick={() => scrollToSection("students-section")}>Students</button>
+                <button type="button" className="admin-nav-btn" onClick={() => scrollToSection("assignments-section")}>Assignments</button>
+                <button type="button" className="admin-nav-btn" onClick={() => scrollToSection("allocation-section")}>Allocation</button>
+                <button type="button" className="admin-nav-btn" onClick={() => scrollToSection("conflicts-section")}>Conflicts</button>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ width: "100%", marginTop: "14px", padding: "10px 14px", fontSize: "13px" }}
+                onClick={handleModalOpen}
+              >
+                Create Staff
+              </button>
+            </div>
+          </aside>
+
+          <div className="admin-content-pane">
         <div style={{ marginBottom: "28px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <h1 style={{ fontSize: "28px", marginBottom: "4px" }}>Admin Roommate Management</h1>
@@ -720,7 +828,7 @@ export default function AdminDashboard() {
         )}
 
         {/* Stats Section */}
-        <div className="stats-panel">
+        <div id="overview-section" className="stats-panel">
           <div className="stat-card stat-card-indigo">
             <div className="stat-value">{data.total}</div>
             <div className="stat-label">Total Registered Students</div>
@@ -736,7 +844,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Table List Card */}
-        <div className="card">
+        <div id="students-section" className="card">
           <div className="table-controls">
             <h3 className="card-title" style={{ margin: 0 }}>
               <span>👥</span> Student Compatibility Directory
@@ -857,7 +965,7 @@ export default function AdminDashboard() {
           )}
         </div>
 
-        <div className="card">
+        <div id="assignments-section" className="card">
           <div className="table-controls" style={{ marginBottom: "12px" }}>
             <h3 className="card-title" style={{ margin: 0 }}>
               <span>✅</span> Confirmed Assignments ({semester})
@@ -877,18 +985,19 @@ export default function AdminDashboard() {
                   <th>Student 2</th>
                   <th>Status</th>
                   <th>Score</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {assignmentsLoading ? (
                   <tr>
-                    <td colSpan="6" style={{ textAlign: "center", color: "var(--text-muted)", padding: "16px" }}>
+                    <td colSpan="7" style={{ textAlign: "center", color: "var(--text-muted)", padding: "16px" }}>
                       Loading assignments...
                     </td>
                   </tr>
                 ) : confirmedAssignments.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={{ textAlign: "center", color: "var(--text-muted)", padding: "16px" }}>
+                    <td colSpan="7" style={{ textAlign: "center", color: "var(--text-muted)", padding: "16px" }}>
                       No confirmed assignments found for this semester.
                     </td>
                   </tr>
@@ -901,6 +1010,16 @@ export default function AdminDashboard() {
                       <td>{a.student_2?.name || "Awaiting roommate"}</td>
                       <td><span className="badge badge-success" style={{ textTransform: "capitalize" }}>{String(a.status).replace("_", " ")}</span></td>
                       <td>{a.compatibility_score ?? "-"}</td>
+                      <td>
+                        <button
+                          onClick={() => handleUndoAssignment(a)}
+                          className="btn btn-danger"
+                          style={{ padding: "5px 8px", fontSize: "12px", borderRadius: "6px" }}
+                          disabled={undoAssignmentLoadingId === a.assignment_id}
+                        >
+                          {undoAssignmentLoadingId === a.assignment_id ? "Undoing..." : "Undo Assignment"}
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -910,7 +1029,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Allocation Dashboard Card */}
-        <div className="card">
+        <div id="allocation-section" className="card">
           <div className="table-controls" style={{ marginBottom: "16px" }}>
             <h3 className="card-title" style={{ margin: 0 }}>
               <span>🏠</span> Room Allocation Management
@@ -1127,7 +1246,7 @@ export default function AdminDashboard() {
 
         {/* Secondary Row */}
         <div className="dashboard-grid">
-          <div className="card" style={{ marginBottom: 0 }}>
+          <div id="conflicts-section" className="card" style={{ marginBottom: 0 }}>
             <h3 className="card-title">
               <span>📋</span> Conflict Logs
             </h3>
@@ -1211,18 +1330,19 @@ export default function AdminDashboard() {
                     <th>Severity</th>
                     <th>Status</th>
                     <th>Reported</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {conflictsLoading ? (
                     <tr>
-                      <td colSpan="7" style={{ textAlign: "center", color: "var(--text-muted)", padding: "16px" }}>
+                      <td colSpan="8" style={{ textAlign: "center", color: "var(--text-muted)", padding: "16px" }}>
                         Loading conflicts...
                       </td>
                     </tr>
                   ) : conflicts.length === 0 ? (
                     <tr>
-                      <td colSpan="7" style={{ textAlign: "center", color: "var(--text-muted)", padding: "16px" }}>
+                      <td colSpan="8" style={{ textAlign: "center", color: "var(--text-muted)", padding: "16px" }}>
                         No conflicts found for current filters.
                       </td>
                     </tr>
@@ -1236,6 +1356,16 @@ export default function AdminDashboard() {
                         <td>{conflict.severity}</td>
                         <td><span className="badge badge-warning" style={{ textTransform: "capitalize" }}>{String(conflict.status || "").replace("_", " ")}</span></td>
                         <td>{conflict.created_at ? new Date(conflict.created_at).toLocaleDateString() : "-"}</td>
+                        <td>
+                          <button
+                            onClick={() => handleOpenConflictUpdate(conflict)}
+                            className="btn btn-primary"
+                            style={{ padding: "5px 10px", fontSize: "12px", borderRadius: "6px" }}
+                            disabled={conflict.status !== "escalated"}
+                          >
+                            Update
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -1244,39 +1374,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="card" style={{ marginBottom: 0 }}>
-            <h3 className="card-title">
-              <span>ℹ️</span> Allocation Workflow
-            </h3>
-            <p style={{ color: "var(--text-muted)", fontSize: "13.5px", lineHeight: "1.6" }}>
-              1. Generate suggestions from compatibility scoring and maximum weight matching.
-              <br />
-              2. Review low-compatibility rows and override pairings where required.
-              <br />
-              3. Approve individual rows or bulk approve all suggestions.
-              <br />
-              4. Approved pairs are assigned to empty rooms. Singles are assigned as awaiting roommates.
-              <br />
-              5. Monitor conflicts, especially escalated cases, and intervene where required.
-            </p>
-            <p style={{ color: "var(--text-muted)", fontSize: "13px", marginTop: "12px" }}>
-              Resolved conflicts: <strong style={{ color: "var(--text-main)" }}>{resolvedCount}</strong>
-            </p>
-          </div>
-
-          <div className="card" style={{ marginBottom: 0 }}>
-            <h3 className="card-title">
-              <span>ℹ️</span> Allocation Workflow
-            </h3>
-            <p style={{ color: "var(--text-muted)", fontSize: "13.5px", lineHeight: "1.6" }}>
-              1. Generate suggestions from compatibility scoring and maximum weight matching.
-              <br />
-              2. Review low-compatibility rows and override pairings where required.
-              <br />
-              3. Approve individual rows or bulk approve all suggestions.
-              <br />
-              4. Approved pairs are assigned to empty rooms. Singles are assigned as awaiting roommates.
-            </p>
+        </div>
           </div>
         </div>
       </div>
@@ -1429,48 +1527,69 @@ export default function AdminDashboard() {
       )}
 
       {breakdownOpen && selectedBreakdown && (
-        <div className="modal-backdrop" onClick={() => setBreakdownOpen(false)}>
+        <div className="modal-backdrop" onClick={handleCloseBreakdown}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Compatibility Breakdown</h3>
-              <button className="modal-close" onClick={() => setBreakdownOpen(false)}>×</button>
+              <h3>Assignment Overview & Scores</h3>
+              <button className="modal-close" onClick={handleCloseBreakdown}>×</button>
             </div>
-            <div style={{ marginTop: "16px" }}>
-              <p style={{ marginBottom: "12px", color: "var(--text-muted)" }}>
-                {selectedBreakdown.student_1_name} ↔ {selectedBreakdown.student_2_name}
-              </p>
-              <div className="table-responsive">
-                <table className="custom-table">
-                  <thead>
-                    <tr>
-                      <th>Category</th>
-                      <th>Points</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(selectedBreakdown.breakdown || {}).map(([key, val]) => (
-                      <tr key={key}>
-                        <td>{breakdownLabels[key] || key}</td>
-                        <td>{val}</td>
+            <form style={{ marginTop: "16px" }}>
+              <div className="form-group">
+                <label className="form-label">Pairing</label>
+                <input
+                  className="form-input"
+                  readOnly
+                  value={`${selectedBreakdown.student_1_name} ↔ ${selectedBreakdown.student_2_name}`}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Total Compatibility Score</label>
+                <input
+                  className="form-input"
+                  readOnly
+                  value={`${selectedBreakdown.score}%`}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Score Breakdown by Category</label>
+                <div className="table-responsive">
+                  <table className="custom-table">
+                    <thead>
+                      <tr>
+                        <th>Category</th>
+                        <th>Points</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {Object.entries(selectedBreakdown.breakdown || {}).map(([key, val]) => (
+                        <tr key={key}>
+                          <td>{breakdownLabels[key] || key}</td>
+                          <td>{val}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <div style={{ marginTop: "10px", fontWeight: 700 }}>
-                Total Score: {selectedBreakdown.score}%
+
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button type="button" className="btn btn-secondary" onClick={handleCloseBreakdown}>
+                  Close
+                </button>
               </div>
-            </div>
+            </form>
           </div>
         </div>
       )}
 
       {overrideOpen && overrideTarget && (
-        <div className="modal-backdrop" onClick={() => setOverrideOpen(false)}>
+        <div className="modal-backdrop" onClick={handleCloseOverride}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Override Match</h3>
-              <button className="modal-close" onClick={() => setOverrideOpen(false)}>×</button>
+              <button className="modal-close" onClick={handleCloseOverride}>×</button>
             </div>
             <form onSubmit={handleSubmitOverride} style={{ marginTop: "16px" }}>
               <p style={{ color: "var(--text-muted)", marginBottom: "12px" }}>
@@ -1504,7 +1623,7 @@ export default function AdminDashboard() {
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => setOverrideOpen(false)}
+                  onClick={handleCloseOverride}
                 >
                   Cancel
                 </button>
@@ -1514,6 +1633,49 @@ export default function AdminDashboard() {
                   disabled={overrideSubmitting}
                 >
                   {overrideSubmitting ? "Applying..." : "Apply Override"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {conflictUpdateOpen && selectedConflict && (
+        <div className="modal-backdrop" onClick={handleCloseConflictUpdate}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Update Escalated Conflict</h3>
+              <button className="modal-close" onClick={handleCloseConflictUpdate}>×</button>
+            </div>
+            <form onSubmit={handleSubmitConflictUpdate} style={{ marginTop: "16px" }}>
+              <div className="form-group">
+                <label className="form-label">Conflict</label>
+                <input
+                  className="form-input"
+                  readOnly
+                  value={`#${selectedConflict.conflict_id} - ${selectedConflict.room_number || "Unknown room"}`}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Status</label>
+                <input className="form-input" readOnly value="resolved" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Resolution Notes (required)</label>
+                <textarea
+                  className="form-input"
+                  rows={4}
+                  value={conflictResolutionNotes}
+                  onChange={(e) => setConflictResolutionNotes(e.target.value)}
+                  required
+                />
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                <button type="button" className="btn btn-secondary" onClick={handleCloseConflictUpdate}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={conflictUpdateSubmitting}>
+                  {conflictUpdateSubmitting ? "Saving..." : "Mark as Resolved"}
                 </button>
               </div>
             </form>

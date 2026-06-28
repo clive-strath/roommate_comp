@@ -130,6 +130,39 @@ def allocation_assignments():
     return jsonify({"assignments": rows, "total": len(rows)}), 200
 
 
+@admin_bp.route("/allocation/assignments/<int:assignment_id>/undo", methods=["PATCH"])
+@role_required("admin")
+def undo_allocation_assignment(assignment_id):
+    assignment = RoomAssignment.query.get_or_404(assignment_id)
+
+    if assignment.status not in ("active", "awaiting_roommate"):
+        return jsonify({"error": "Only active assignments can be undone"}), 400
+
+    room = Room.query.get(assignment.room_id)
+
+    assignment.status = "cancelled"
+    if room and room.status != "maintenance":
+        room.status = "empty"
+
+    student_ids = [assignment.student_id_1]
+    if assignment.student_id_2:
+        student_ids.append(assignment.student_id_2)
+
+    for sid in student_ids:
+        pref = StudentPreference.query.filter_by(student_id=sid).first()
+        if pref:
+            pref.is_locked = False
+
+    db.session.commit()
+
+    return jsonify({
+        "message": "Assignment undone successfully",
+        "assignment_id": assignment.assignment_id,
+        "room_id": assignment.room_id,
+        "room_status": room.status if room else None,
+    }), 200
+
+
 # ── DISABLE STUDENT ACCOUNT ────────────────────────────────────────────────────
 @admin_bp.route("/students/<int:student_id>/disable", methods=["PATCH"])
 @role_required("admin")

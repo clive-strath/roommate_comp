@@ -217,6 +217,7 @@ def confirm_allocation(semester, admin_id, confirmed_pairs, confirmed_singles):
     confirmed_pairs = confirmed_pairs or []
     confirmed_singles = confirmed_singles or []
     results = {"created": [], "updated": [], "failed": []}
+    reusable_statuses = ["cancelled", "completed", "archived"]
 
     required_empty_rooms = (
         sum(1 for p in confirmed_pairs if not p.get("joins_existing_room"))
@@ -325,21 +326,58 @@ def confirm_allocation(semester, admin_id, confirmed_pairs, confirmed_singles):
             if not room:
                 raise ValueError("Allocation cannot be completed. Please add additional rooms.")
 
-            assignment = RoomAssignment(
-                student_id_1=sid1,
-                student_id_2=sid2,
-                room_id=room.room_id,
-                semester=semester,
-                compatibility_score=pair["score"],
-                score_breakdown=pair["breakdown"],
-                assignment_type="algorithm",
-                status="active",
-                is_flagged=is_flagged(pair["score"]) if pair["score"] is not None else False,
-                assigned_by=admin_id,
-            )
-            db.session.add(assignment)
-            db.session.flush()
-            results["created"].append(assignment.assignment_id)
+            reusable_assignment = RoomAssignment.query.filter(
+                RoomAssignment.semester == semester,
+                RoomAssignment.status.in_(reusable_statuses),
+                db.or_(
+                    db.and_(
+                        RoomAssignment.student_id_1 == sid1,
+                        RoomAssignment.student_id_2 == sid2,
+                    ),
+                    db.and_(
+                        RoomAssignment.student_id_1 == sid2,
+                        RoomAssignment.student_id_2 == sid1,
+                    ),
+                ),
+            ).order_by(RoomAssignment.updated_at.desc()).first()
+
+            if not reusable_assignment:
+                reusable_assignment = RoomAssignment.query.filter(
+                    RoomAssignment.semester == semester,
+                    RoomAssignment.room_id == room.room_id,
+                    RoomAssignment.status.in_(reusable_statuses),
+                ).order_by(RoomAssignment.updated_at.desc()).first()
+
+            if reusable_assignment:
+                reusable_assignment.student_id_1 = sid1
+                reusable_assignment.student_id_2 = sid2
+                reusable_assignment.room_id = room.room_id
+                reusable_assignment.compatibility_score = pair["score"]
+                reusable_assignment.score_breakdown = pair["breakdown"]
+                reusable_assignment.assignment_type = "algorithm"
+                reusable_assignment.override_reason = None
+                reusable_assignment.overridden_by = None
+                reusable_assignment.overridden_at = None
+                reusable_assignment.status = "active"
+                reusable_assignment.is_flagged = is_flagged(pair["score"]) if pair["score"] is not None else False
+                reusable_assignment.assigned_by = admin_id
+                results["updated"].append(reusable_assignment.assignment_id)
+            else:
+                assignment = RoomAssignment(
+                    student_id_1=sid1,
+                    student_id_2=sid2,
+                    room_id=room.room_id,
+                    semester=semester,
+                    compatibility_score=pair["score"],
+                    score_breakdown=pair["breakdown"],
+                    assignment_type="algorithm",
+                    status="active",
+                    is_flagged=is_flagged(pair["score"]) if pair["score"] is not None else False,
+                    assigned_by=admin_id,
+                )
+                db.session.add(assignment)
+                db.session.flush()
+                results["created"].append(assignment.assignment_id)
 
             for sid in (sid1, sid2):
                 pref = StudentPreference.query.filter_by(student_id=sid).first()
@@ -363,21 +401,42 @@ def confirm_allocation(semester, admin_id, confirmed_pairs, confirmed_singles):
             if not room:
                 raise ValueError("Allocation cannot be completed. Please add additional rooms.")
 
-            assignment = RoomAssignment(
-                student_id_1=student_id,
-                student_id_2=None,
-                room_id=room.room_id,
-                semester=semester,
-                compatibility_score=None,
-                score_breakdown=None,
-                assignment_type="algorithm",
-                status="awaiting_roommate",
-                is_flagged=False,
-                assigned_by=admin_id,
-            )
-            db.session.add(assignment)
-            db.session.flush()
-            results["created"].append(assignment.assignment_id)
+            reusable_assignment = RoomAssignment.query.filter(
+                RoomAssignment.semester == semester,
+                RoomAssignment.status.in_(reusable_statuses),
+                RoomAssignment.room_id == room.room_id,
+            ).order_by(RoomAssignment.updated_at.desc()).first()
+
+            if reusable_assignment:
+                reusable_assignment.student_id_1 = student_id
+                reusable_assignment.student_id_2 = None
+                reusable_assignment.room_id = room.room_id
+                reusable_assignment.compatibility_score = None
+                reusable_assignment.score_breakdown = None
+                reusable_assignment.assignment_type = "algorithm"
+                reusable_assignment.override_reason = None
+                reusable_assignment.overridden_by = None
+                reusable_assignment.overridden_at = None
+                reusable_assignment.status = "awaiting_roommate"
+                reusable_assignment.is_flagged = False
+                reusable_assignment.assigned_by = admin_id
+                results["updated"].append(reusable_assignment.assignment_id)
+            else:
+                assignment = RoomAssignment(
+                    student_id_1=student_id,
+                    student_id_2=None,
+                    room_id=room.room_id,
+                    semester=semester,
+                    compatibility_score=None,
+                    score_breakdown=None,
+                    assignment_type="algorithm",
+                    status="awaiting_roommate",
+                    is_flagged=False,
+                    assigned_by=admin_id,
+                )
+                db.session.add(assignment)
+                db.session.flush()
+                results["created"].append(assignment.assignment_id)
 
             pref = StudentPreference.query.filter_by(student_id=student_id).first()
             if pref:

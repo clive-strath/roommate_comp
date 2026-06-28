@@ -372,22 +372,6 @@ export default function StudentDashboard() {
               </div>
             </div>
 
-            <div className="card">
-              <h3 className="card-title">
-                <span>🤝</span> Support &amp; Community
-              </h3>
-              <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "16px", lineHeight: "1.5" }}>
-                Living in shared spaces is a community experience. If you face roommate concerns or need mediation support, we are here to help.
-              </p>
-              <div style={{ padding: "14px", border: "1px dashed var(--border-color)", borderRadius: "var(--radius-md)", textAlign: "center" }}>
-                <span style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-main)", display: "block", marginBottom: "4px" }}>
-                  Need Relationship Support?
-                </span>
-                <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block" }}>
-                  Your report is automatically routed to your block Resident Advisor.
-                </span>
-              </div>
-            </div>
           </div>
         </div>
       </div>
