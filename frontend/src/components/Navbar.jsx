@@ -9,7 +9,7 @@ export default function Navbar() {
   const handleLogout = async () => {
     try {
       await api.post("/auth/logout");
-    } catch (err) {
+    } catch {
       // Token may already be expired/revoked; local logout should still proceed.
     } finally {
       logout();

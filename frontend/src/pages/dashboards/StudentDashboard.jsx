@@ -35,7 +35,7 @@ export default function StudentDashboard() {
       try {
         const res = await api.get(`/preferences/${user.student_id}`);
         setPrefData(res.data);
-      } catch (err) {
+      } catch {
         setPrefData({ submitted: false });
       } finally {
         setLoading(false);
@@ -52,7 +52,7 @@ export default function StudentDashboard() {
         const sem = `${new Date().getFullYear()}-S1`;
         const res = await api.get(`/students/${user.student_id}/assignment?semester=${encodeURIComponent(sem)}`);
         setAssignment(res.data?.assignment || null);
-      } catch (err) {
+      } catch {
         setAssignment(null);
       }
     };

@@ -41,7 +41,7 @@ export default function PreferenceForm() {
           setIsEdit(true);
           setIsLocked(res.data.preferences.is_locked);
         }
-      } catch (err) {
+      } catch {
         // No preferences yet — stay in create mode
       } finally {
         setLoading(false);

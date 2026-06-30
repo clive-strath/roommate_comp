@@ -213,7 +213,6 @@ def login():
 @auth_bp.route("/me", methods=["GET"])
 @jwt_required()
 def get_current_user():
-    from flask_jwt_extended import get_jwt
     claims  = get_jwt()
     role    = claims.get("role")
     user_id = int(get_jwt_identity())

@@ -513,7 +513,7 @@ export default function AdminDashboard() {
       const res = await api.get(`/admin/students?${params.toString()}`);
       setData(res.data);
       setStudentsTotalPages(res.data?.total_pages || 1);
-    } catch (err) {
+    } catch {
       console.error("Failed to load students");
     } finally {
       setLoading(false);
@@ -560,7 +560,7 @@ export default function AdminDashboard() {
         rooms_available: emptyRooms,
         sufficient_rooms: emptyRooms >= prev.rooms_required,
       }));
-    } catch (err) {
+    } catch {
       console.error("Failed to load room availability");
     }
   };
@@ -582,7 +582,7 @@ export default function AdminDashboard() {
       setConfirmedAssignments(res.data?.assignments || []);
       setAssignmentsTotalPages(res.data?.total_pages || 1);
       setAssignmentsTotal(res.data?.total || 0);
-    } catch (err) {
+    } catch {
       console.error("Failed to load confirmed assignments");
       setConfirmedAssignments([]);
       setAssignmentsTotalPages(1);
@@ -748,7 +748,6 @@ export default function AdminDashboard() {
   const openCount = conflicts.filter((c) => c.status === "open").length;
   const mediationCount = conflicts.filter((c) => c.status === "in_mediation").length;
   const escalatedCount = conflicts.filter((c) => c.status === "escalated").length;
-  const resolvedCount = conflicts.filter((c) => c.status === "resolved").length;
 
   const handleDisable = async (studentId, studentName) => {
     if (window.confirm(`Are you sure you want to deactivate student ${studentName}?`)) {
@@ -757,7 +756,7 @@ export default function AdminDashboard() {
         setActionMessage(`Student ${studentName} has been deactivated successfully.`);
         fetchStudents(); // Refresh
         setTimeout(() => setActionMessage(""), 3000);
-      } catch (err) {
+      } catch {
         console.error("Failed to deactivate student");
       }
     }
@@ -849,7 +848,7 @@ export default function AdminDashboard() {
     setSubmitError("");
 
     try {
-      const res = await api.post("/admin/users", {
+      await api.post("/admin/users", {
         name: form.name.trim(),
         email: form.email.trim().toLowerCase(),
         password: form.password,

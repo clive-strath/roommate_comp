@@ -2,7 +2,6 @@ from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from ..extensions import db
 from ..models import Student, RoomAssignment, Room
-from . import role_required
 
 students_bp = Blueprint("students", __name__)
 

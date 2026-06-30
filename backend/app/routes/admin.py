@@ -2,7 +2,7 @@ import csv
 import io
 
 from flask import Blueprint, request, jsonify, Response
-from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from flask_jwt_extended import get_jwt_identity
 from sqlalchemy import asc, desc
 from sqlalchemy.orm import aliased
 
@@ -10,7 +10,7 @@ from ..extensions import db, bcrypt
 from ..models import AdminUser, Student, StudentPreference, Room, RoomAssignment, ConflictLog
 from . import role_required
 from ..services.allocation_service import generate_allocation_preview, confirm_allocation
-from ..services.compatibility_engine import calculate_compatibility, is_flagged, build_compatibility_graph, run_maximum_weight_matching
+from ..services.compatibility_engine import calculate_compatibility, is_flagged
 from ..security import validate_password_policy
 
 admin_bp = Blueprint("admin", __name__)

@@ -104,7 +104,7 @@ class Room(db.Model):
     room_number  = db.Column(db.String(20), nullable=False)
     hostel_block = db.Column(db.String(20), nullable=False)
     capacity     = db.Column(db.Integer, nullable=False, default=2)
-    status       = db.Column(db.String(15), nullable=False, default="empty")
+    status       = db.Column(db.String(25), nullable=False, default="empty")
     created_at   = db.Column(db.DateTime(timezone=True), default=now_utc)
     updated_at   = db.Column(db.DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
@@ -133,7 +133,7 @@ class RoomAssignment(db.Model):
     override_reason     = db.Column(db.Text, nullable=True)
     overridden_by       = db.Column(db.Integer, db.ForeignKey("admin_users.admin_id"), nullable=True)
     overridden_at       = db.Column(db.DateTime(timezone=True), nullable=True)
-    status              = db.Column(db.String(15), nullable=False, default="active")
+    status              = db.Column(db.String(25), nullable=False, default="active")
     assigned_by         = db.Column(db.Integer, db.ForeignKey("admin_users.admin_id"), nullable=False)
     is_flagged          = db.Column(db.Boolean, nullable=False, default=False)
     created_at          = db.Column(db.DateTime(timezone=True), default=now_utc)
